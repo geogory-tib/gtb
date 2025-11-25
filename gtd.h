@@ -5,7 +5,8 @@
 #include <stdlib.h>
 #include <string.h>
 #define ARENA_FULL -1
-#define panic(reason) printf("Panic @ line %ld, Reason %s",__LINE__,reason); abort();
+#define panic(reason) printf("Panic @ line %ld, Reason %s\n", __LINE__, reason); \
+  exit(1);
 /*
   struct for the arena brk is the "break"
   when you push onto it your given the break of the arena
@@ -138,18 +139,18 @@ static inline void garena_destroy(garena *gar) {
 #define SLICE_FREE(slice)                                                      \
   free((slice).buffer);                                                        \
   (slice).len = 0;
-#define SLICE_ALLOC_AR(slice, len, elem_size, ar)                              \
+#define SLICE_ALLOC_AR(slice, length, elem_size, ar)                              \
   (slice).buffer =                                                             \
-      (decltype((slice).buffer))arena_alloc(ar, (len * elem_size));            \
-  (slice).len = len;
-#define SLICE_ALLOC_GAR(slice, len, elem_size, ar)                             \
+      (decltype((slice).buffer))arena_alloc(ar, (length * elem_size));            \
+  (slice).len = length;
+#define SLICE_ALLOC_GAR(slice, length, elem_size, ar)                             \
   (slice).buffer =                                                             \
-      (decltype((slice).buffer))garena_alloc(ar, (len * elem_size));           \
-  (slice).len = len;
-#define SLICE_ALLOC_MALLOC(slice, len, elem_size)                              \
+      (decltype((slice).buffer))garena_alloc(ar, (length * elem_size));           \
+  (slice).len = length;
+#define SLICE_ALLOC_MALLOC(slice, length, elem_size)                              \
   (slice).buffer =                                                             \
-	(decltype((slice).buffer))calloc(len,elem_size);						\
-  (slice).len = len;
+	(decltype((slice).buffer))calloc(length,elem_size);						\
+  (slice).len = length;
 template <typename T> struct cslice {
   size_t len;
   T *buffer;
@@ -302,6 +303,7 @@ template <typename T> struct Dyn_Arry {
     return buffer[index];
   }
 };
+
 
 template <typename T> Dyn_Arry<T> new_dyn_arry(size_t size) {
   Dyn_Arry<T> ret;
