@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #define ARENA_FULL -1
+#define panic(reason) printf("Panic @ line %ld, Reason %s",__LINE__,reason); abort();
 /*
   struct for the arena brk is the "break"
   when you push onto it your given the break of the arena
@@ -88,6 +89,29 @@ static inline void *garena_alloc(garena *ar, int size) {
   void *ret = arena_alloc(current_page, size);
   return ret;
 }
+/*
+This Function will not replace the previously allocated chunk the "ptr" argument
+was given. If the address given was not the former break point it will allocate
+a new segment on the arena from the given break and memcpy the previous content
+into the freshly allocated buffer. If the address is the same as the former
+break it will simply increment the brk for the given size argument and return
+the address that was given to it. Be mindfull when using dynamic arrays that
+this can use a bit of memory but it's probably not a big deal unless your
+allocating MBs at a time.
+ */
+static inline void *garena_realloc(garena *ar, void*ptr,int size,int prev_size) {
+  arena *current_page = &ar->pages[ar->current_page];
+  char *casted_page_buffer = (char*)current_page->buffer; //used to check if the last allocation return the given pointer
+  if ((current_page->brk + size) >= current_page->cap) {
+    current_page = garena_page_new(ar);
+  } else if((char*)ptr == &casted_page_buffer[current_page->brk - prev_size]) {
+    current_page->brk += size;
+	return ptr;
+  }
+  void *ret = arena_alloc(current_page, size);
+  memcpy(ret,ptr,prev_size);
+  return ret;
+}
 /*returns the amount used of the current page return -1 if current page is
  * full*/
 static inline int garena_used(garena *ar) {
@@ -111,6 +135,51 @@ static inline void garena_destroy(garena *gar) {
 
 #ifdef __cplusplus
 #define ALLOC_FAILURE -1
+#define SLICE_FREE(slice)                                                      \
+  free((slice).buffer);                                                        \
+  (slice).len = 0;
+#define SLICE_ALLOC_AR(slice, len, elem_size, ar)                              \
+  (slice).buffer =                                                             \
+      (decltype((slice).buffer))arena_alloc(ar, (len * elem_size));            \
+  (slice).len = len;
+#define SLICE_ALLOC_GAR(slice, len, elem_size, ar)                             \
+  (slice).buffer =                                                             \
+      (decltype((slice).buffer))garena_alloc(ar, (len * elem_size));           \
+  (slice).len = len;
+#define SLICE_ALLOC_MALLOC(slice, len, elem_size)                              \
+  (slice).buffer =                                                             \
+	(decltype((slice).buffer))calloc(len,elem_size);						\
+  (slice).len = len;
+template <typename T> struct cslice {
+  size_t len;
+  T *buffer;
+  // does slicing on the buffer
+  cslice<T> slice(size_t bI, size_t eI) {
+    cslice<T> ret;
+    ret.buffer = &buffer[bI];
+    ret.len = eI - bI;
+    return ret;
+  }
+  size_t count(T item) {
+    size_t ret = 0;
+    for (int i = 0; i < len; i++) {
+      T value = buffer[i];
+      if (value == item) {
+		ret++;
+      }
+    }
+	return ret;
+  }
+  T *operator[](size_t index) {
+    if (index >= len) {
+      printf("Out of bounds Indexing. Cslice with Len:%ld indexed with %ld", len, index);
+      panic("Out Of bounds on Cslice");
+	
+    }
+    return &buffer[index];
+  }
+};
+
 template <typename T> struct Dyn_Arry {
   size_t cap;
   size_t len;
@@ -218,40 +287,34 @@ template <typename T> struct Dyn_Arry {
     cap -= decrement;
     return 0;
   }
-
+  // provides a slice to the buffer of the array
+  cslice<T> to_slice() {
+    cslice<T> ret;
+    ret.buffer = this->buffer;
+    ret.len = this->cap;
+	return ret;
+  }
   T operator[](size_t index) {
     if (index >= len) {
-      printf("Out of Bounds Indexing. Array with Len:%ld indexed with %ld\n",
-             len, index);
-      abort();
+      printf("Out of Bounds Indexing. Array with Len:%ld indexed with %ld\n",len, index);
+      panic("Out Of bounds on Dynarray")
     }
     return buffer[index];
   }
 };
 
-template <typename T> Dyn_Arry<T> new_dynarray(size_t size) {
+template <typename T> Dyn_Arry<T> new_dyn_arry(size_t size) {
   Dyn_Arry<T> ret;
   ret.buffer = (T *)calloc(size, sizeof(T));
   ret.cap = size;
   ret.len = 0;
   return ret;
 }
-#define SLICE_FREE(slice)                                                      \
-  free((slice).buffer);                                                        \
-  (slice).len = 0;
+// mess of macros to make allocating slices convient
 
-template <typename T> struct cslice {
-  size_t len;
-  T *buffer;
-  // does slicing on the buffer
-  inline cslice<T> slice(size_t bI, size_t eI) {
-    cslice<T> ret;
-    ret.buffer = &buffer[bI];
-    ret.len = eI - bI;
-    return ret;
-  }
-  T *operator[](size_t index) { return &buffer[index]; }
-};
+
+
+
 #endif // !GTD_H
 
 #endif // !GTD_H
