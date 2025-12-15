@@ -7,6 +7,27 @@
 #define ARENA_FULL -1
 #define panic(reason) printf("Panic @ line %ld, Reason %s\n", __LINE__, reason); \
   exit(1);
+//dynamic array functions
+#ifndef __cplusplus
+#define dyn_makeM(ar,size)								\
+  do{													\
+	(ar).buffer = calloc(size,sizeof(*(ar).buffer));	\
+	(ar).cap = size;									\
+	(ar).len = 0;										\
+  }while(0);
+#define dyn_appendM(ar,elem)											\
+  do{																	\
+	if((ar).len >= (ar).cap){											\
+      (ar).cap += 10;													\
+      (ar).buffer = realloc((ar).buffer,(ar).cap * sizeof(*(ar).buffer));	\
+	}																	\
+	(ar).buffer[(ar).len] = elem;										\
+	(ar).len++;															\
+  }while(0);
+#endif
+
+
+
 /*
   struct for the arena brk is the "break"
   when you push onto it your given the break of the arena
@@ -90,16 +111,7 @@ static inline void *garena_alloc(garena *ar, int size) {
   void *ret = arena_alloc(current_page, size);
   return ret;
 }
-/*
-This Function will not replace the previously allocated chunk the "ptr" argument
-was given. If the address given was not the former break point it will allocate
-a new segment on the arena from the given break and memcpy the previous content
-into the freshly allocated buffer. If the address is the same as the former
-break it will simply increment the brk for the given size argument and return
-the address that was given to it. Be mindfull when using dynamic arrays that
-this can use a bit of memory but it's probably not a big deal unless your
-allocating MBs at a time.
- */
+
 static inline void *garena_realloc(garena *ar, void*ptr,int size,int prev_size) {
   arena *current_page = &ar->pages[ar->current_page];
   char *casted_page_buffer = (char*)current_page->buffer; //used to check if the last allocation return the given pointer
@@ -133,7 +145,6 @@ static inline void garena_destroy(garena *gar) {
   gar->page_count = 0;
   free(gar->pages);
 }
-
 #ifdef __cplusplus
 #define ALLOC_FAILURE -1
 #define SLICE_FREE(slice)                                                      \
@@ -313,7 +324,11 @@ template <typename T> Dyn_Arry<T> new_dyn_arry(size_t size) {
   return ret;
 }
 // mess of macros to make allocating slices convient
-
+struct string_builder {
+  char *buffer;
+  int len;
+  int cap;
+};
 
 
 
