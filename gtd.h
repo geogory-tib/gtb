@@ -18,15 +18,36 @@
 #define dyn_appendM(ar,elem)											\
   do{																	\
 	if((ar).len >= (ar).cap){											\
-      (ar).cap += 10;													\
+      (ar).cap = ((ar).cap + 1) * 2;												\
       (ar).buffer = realloc((ar).buffer,(ar).cap * sizeof(*(ar).buffer));	\
 	}																	\
 	(ar).buffer[(ar).len] = elem;										\
 	(ar).len++;															\
   }while(0);
+#define dyn_insertM(ar,elem,index) \
+  do{																	\
+	__typeof__(elem) swap_1 = {0};										\
+	__typeof__(elem) swap_2 = {0};										\
+	dyn_appendM((ar),swap_1);											\
+	swap_1 = (ar).buffer[index];										\
+	for(size_t i = index + 1; i < (ar).len; i++){ \
+	  swap_2 = (ar).buffer[i];					  \
+	  (ar).buffer[i] = swap_1;					  \
+	  swap_1 = swap_2;							  \
+	}											  \
+}while(0);
+#define dyn_appendManyM(ar,elems,len) \
+  do{									   \
+  for(size_t i = 0; i < len; i++){\
+	dyn_appendM(ar,elems[i]);					\
+  }												\
+}while(0);
+typedef struct{
+  char *buffer;
+  size_t len;
+  size_t cap;
+}char_slice;
 #endif
-
-
 
 /*
   struct for the arena brk is the "break"
@@ -105,7 +126,10 @@ static inline arena *garena_page_new(garena *ar) {
 /*can return NULL on failure*/
 static inline void *garena_alloc(garena *ar, int size) {
   arena *current_page = &ar->pages[ar->current_page];
-  if ((current_page->brk + size) >= current_page->cap) {
+  if(size >= ar->page_size){
+	ar->page_size = (size * 2);
+	current_page = garena_page_new(ar);
+  }else if ((current_page->brk + size) >= current_page->cap) {
     current_page = garena_page_new(ar);
   }
   void *ret = arena_alloc(current_page, size);
@@ -114,12 +138,17 @@ static inline void *garena_alloc(garena *ar, int size) {
 
 static inline void *garena_realloc(garena *ar, void*ptr,int size,int prev_size) {
   arena *current_page = &ar->pages[ar->current_page];
-  char *casted_page_buffer = (char*)current_page->buffer; //used to check if the last allocation return the given pointer
-  if ((current_page->brk + size) >= current_page->cap) {
-    current_page = garena_page_new(ar);
-  } else if((char*)ptr == &casted_page_buffer[current_page->brk - prev_size]) {
-    current_page->brk += size;
-	return ptr;
+  if(size >= ar->page_size){
+	ar->page_size = (size * 2);
+	current_page = garena_page_new(ar);
+  }else{
+	char *casted_page_buffer = (char*)current_page->buffer; //used to check if the last allocation return the given pointer
+	if ((current_page->brk + size) >= current_page->cap) {
+	  current_page = garena_page_new(ar);
+	} else if((char*)ptr == &casted_page_buffer[current_page->brk - prev_size]) {
+	  current_page->brk += size;
+	  return ptr;
+	}
   }
   void *ret = arena_alloc(current_page, size);
   memcpy(ret,ptr,prev_size);
